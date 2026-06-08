@@ -1,4 +1,4 @@
-name: Validate Actions
+name: Validate Updated Actions
 
 on:
   workflow_dispatch:
