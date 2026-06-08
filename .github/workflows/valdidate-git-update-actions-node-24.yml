@@ -1,0 +1,161 @@
+name: Validate Actions
+
+on:
+  workflow_dispatch:
+    inputs:
+      force_node24:
+        description: Force JavaScript actions to Node 24
+        required: true
+        default: "true"
+        type: choice
+        options:
+          - "true"
+          - "false"
+
+env:
+  #FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: ${{ inputs.force_node24 }}
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write
+
+
+
+    steps:
+      #
+      # actions/checkout@v4
+      #
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      #
+      # actions/setup-node@v4
+      #
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Verify Node
+        run: |
+          node --version
+          npm --version
+
+      #
+      # actions/setup-dotnet@v4
+      #
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Verify .NET
+        run: dotnet --info
+
+      #
+      # GitVersion Setup
+      #
+      - name: Setup GitVersion
+        uses: GitTools/actions/gitversion/setup@v4
+        with:
+          versionSpec: '6.x'
+
+      #
+      # GitVersion Execute
+      #
+      - name: Execute GitVersion
+        id: gitversion
+        uses: GitTools/actions/gitversion/execute@v4
+
+      - name: Verify GitVersion
+        run: |
+          echo "${{ steps.gitversion.outputs.fullSemVer }}"
+
+      #
+      # upload-artifact@v4
+      #
+      - name: Create Artifact
+        run: |
+          mkdir test-artifact
+          echo "version=${{ steps.gitversion.outputs.fullSemVer }}" > test-artifact/info.txt
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: validation-artifact
+          path: test-artifact
+
+      #
+      # docker/setup-buildx-action@v3
+      #
+      - name: Setup Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Verify Buildx
+        run: docker buildx version
+
+      #
+      # docker/login-action@v3
+      #
+      # Use GHCR so no external secrets are required.
+      #
+      - name: Login to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      #
+      # Dockerfile for build-push-action
+      #
+      - name: Create Dockerfile
+        run: |
+          cat <<EOF > Dockerfile
+          FROM alpine:3.22
+          RUN echo hello
+          CMD ["sh"]
+          EOF
+
+      #
+      # docker/build-push-action@v5
+      #
+      - name: Build Image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: false
+          tags: validation:test
+
+      #
+      # jfrog/setup-jfrog-cli@v4
+      #
+      - name: Setup JFrog CLI
+        uses: jfrog/setup-jfrog-cli@v5
+
+      - name: Verify JFrog CLI
+        run: jf --version
+
+      #
+      # Final validation
+      #
+      - name: Summary
+        run: |
+          echo "checkout@v4: PASS"
+          echo "setup-node@v4: PASS"
+          echo "setup-dotnet@v4: PASS"
+          echo "gitversion/setup@v1: PASS"
+          echo "gitversion/execute@v1: PASS"
+          echo "upload-artifact@v4: PASS"
+          echo "setup-buildx-action@v3: PASS"
+          echo "login-action@v3: PASS"
+          echo "build-push-action@v5: PASS"
+          echo "setup-jfrog-cli@v4: PASS"
